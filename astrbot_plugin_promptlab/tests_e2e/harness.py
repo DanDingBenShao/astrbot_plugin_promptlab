@@ -156,13 +156,12 @@ class PluginHarness:
         ev = make_event(text, uid=uid)
         stripped = text.lstrip("/")
         handler_name = "cmd_train_root"
-        for sub in ("训练开始", "训练状态", "训练停", "训练报告", "训练继续",
-                    "训练样本", "训练列表"):
+        for sub, suffix in (("训练开始", "start"), ("训练状态", "status"),
+                            ("训练停", "stop"), ("训练报告", "report"),
+                            ("训练继续", "resume"), ("训练样本", "samples"),
+                            ("训练语料", "corpus"), ("训练列表", "list")):
             if stripped == sub or stripped.startswith(sub + " "):
-                handler_name = "cmd_train_" + sub[2:].replace("开始", "start") \
-                    .replace("状态", "status").replace("停", "stop") \
-                    .replace("报告", "report").replace("继续", "resume") \
-                    .replace("样本", "samples").replace("列表", "list")
+                handler_name = "cmd_train_" + suffix
                 break
         agen = getattr(self.plugin, handler_name)(ev)
         outs = []

@@ -18,7 +18,7 @@ desc: |
   - 全程离线：迭代的是候选提示词，不碰 bot 正在用的人设，零生产风险
   - 素材：需求文本 + 可选真实群聊/私聊记录做风格参照（官方接口取数），
     没装其他记忆插件也完全可用
-version: 0.1.0
+version: 0.2.0
 author: 本少 (DanDingBenShao)
 social_link: https://space.bilibili.com/411821291
 repo: https://github.com/DanDingBenShao/astrbot_plugin_promptlab

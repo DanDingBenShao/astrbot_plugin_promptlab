@@ -15,16 +15,19 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 
 from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, MessageChain, filter
 
 from .core.engine import AdversarialEngine
-from .core.state import SessionStore, TrainingSession, _safe_int_id
+from .core.state import (SessionStore, TrainingSession, _json_read,
+                         _json_write_atomic, _safe_int_id)
+from .core import curator
 
 PLUGIN_NAME = "astrbot_plugin_promptlab"
-PLUGIN_VERSION = "0.1.0"
+PLUGIN_VERSION = "0.2.0"
 
 _CMD = "训练"
 
@@ -62,6 +65,11 @@ class PromptLabPlugin(star.Star):
         self.store = SessionStore(self._data_root)
         self.engine = AdversarialEngine(self)
         self._manual_samples: dict[int, str] = {}   # owner -> 下次训练用的风格样本
+        # 语料包路径（设一次，后续训练都从它挑选；持久化到 data_root）
+        self._corpus_paths: dict[int, str] = {}
+        cp = _json_read(os.path.join(self._data_root, "corpus_paths.json"))
+        if isinstance(cp, dict):
+            self._corpus_paths = {int(k): str(v) for k, v in cp.items()}
 
     def cfg(self, key: str, default):
         try:
@@ -128,6 +136,62 @@ class PromptLabPlugin(star.Star):
         yield event.plain_result(
             self._set_samples(_safe_int_id(event.get_sender_id()), arg))
 
+    @filter.command("训练语料")
+    async def cmd_train_corpus(self, event: AstrMessageEvent):
+        """设置/清除/预览语料包路径。挑选在训练开始时进行。"""
+        uid = _safe_int_id(event.get_sender_id())
+        arg = _arg_after(event, "训练语料")
+        if not arg:
+            cur = self._corpus_paths.get(uid, "")
+            yield event.plain_result(
+                f"当前语料包：{cur or '未设置（用会话历史当样本）'}\n"
+                "用法：/训练语料 <JSON/JSONL/TXT 文件绝对路径>\n"
+                "清除：/训练语料 清除 | 预览挑选效果：/训练语料 预览 <需求>")
+            return
+        if arg in ("清除", "删除", "off"):
+            self._corpus_paths.pop(uid, None)
+            self._save_corpus_paths()
+            yield event.plain_result("语料包已清除，样本回到会话历史。")
+            return
+        path = arg.strip("\"'")
+        if arg.startswith("预览"):
+            req = arg[2:].strip() or "更像真人"
+            yield event.plain_result(self._corpus_preview(uid, req))
+            return
+        if not os.path.isfile(path):
+            yield event.plain_result(f"文件不存在：{path}")
+            return
+        self._corpus_paths[uid] = path
+        self._save_corpus_paths()
+        entries = curator.load_corpus(path)
+        if not entries:
+            yield event.plain_result(
+                f"已登记但读不到有效语料：{path}\n"
+                "支持 JSON list[{text|role,content}] / JSONL / TXT（一行一条）")
+            return
+        yield event.plain_result(
+            f"语料包已就绪：{path}\n"
+            f"读入 {len(entries)} 条有效消息（已自动清洗）。\n"
+            "下次 /训练开始 时按需求自动挑选参考样本；"
+            "先看效果可 /训练语料 预览 <需求>。")
+
+    def _save_corpus_paths(self) -> None:
+        _json_write_atomic(
+            os.path.join(self._data_root, "corpus_paths.json"),
+            self._corpus_paths)
+
+    def _corpus_preview(self, uid: int, requirement: str) -> str:
+        path = self._corpus_paths.get(uid, "")
+        if not path:
+            return "先设置语料包：/训练语料 <文件绝对路径>"
+        text, stats = curator.curate_from_file(path, requirement)
+        if not text:
+            return f"挑选失败：{stats.get('error', '语料为空')}"
+        return (f"按「{requirement}」从 {stats['total']} 条中挑出 "
+                f"{stats['picked']} 条（清洗后 {stats['cleaned']} 条可选）：\n"
+                "————\n" + text + "\n————\n"
+                "满意就直接 /训练开始，这份会自动用上。")
+
     @filter.command("训练列表")
     async def cmd_train_list(self, event: AstrMessageEvent):
         yield event.plain_result(self._list(_safe_int_id(event.get_sender_id())))
@@ -149,7 +213,19 @@ class PromptLabPlugin(star.Star):
                 "拿不到当前人设提示词（未配置默认人设？）。"
                 "可先用 /训练样本 <风格参考文本> 提供素材后再试。")
             return
-        samples = self._manual_samples.pop(uid, "") or await self._collect_samples(uid)
+        # 样本优先级：手动样本 > 语料包挑选 > 会话历史
+        samples = self._manual_samples.pop(uid, "")
+        sample_src = "手动样本"
+        if not samples:
+            path = self._corpus_paths.get(uid, "")
+            if path:
+                samples, stats = curator.curate_from_file(path, req)
+                sample_src = (f"语料包（挑 {stats.get('picked', 0)}/"
+                              f"{stats.get('total', 0)} 条）"
+                              if samples else "语料包（挑选为空，改用会话历史）")
+        if not samples:
+            samples = await self._collect_samples(uid)
+            sample_src = "会话历史"
         max_rounds = max(1, min(10, int(self.cfg("max_rounds", 3) or 3)))
         pass_score = max(1, min(100, int(self.cfg("pass_score", 70) or 70)))
         tid = time.strftime("%m%d-%H%M%S")
@@ -168,7 +244,7 @@ class PromptLabPlugin(star.Star):
             f"训练 #{tid} 已开跑（最多 {max_rounds} 轮，及格线 {pass_score} 分）\n"
             f"流程：拆清单 → 基线 → 对抗轮次 → 必停交付\n"
             f"每轮结束自动汇报进度；跑完用 /训练报告 看完整报告。"
-            + ("（风格样本：已从会话历史取到）" if samples
+            + (f"（风格样本：{sample_src}）" if samples
                else "（无风格样本，纯按需求训练）"))
 
     def _status(self, uid: int) -> str:
@@ -360,6 +436,7 @@ class PromptLabPlugin(star.Star):
             f"/{_CMD}报告          完整报告+收敛提示词\n"
             f"/{_CMD}继续 [N]      继续/加 N 轮\n"
             f"/{_CMD}样本 <文本>   手动给风格样本（可选）\n"
+            f"/{_CMD}语料 <路径>   语料包文件，按需求自动挑样本（可选）\n"
             f"/{_CMD}列表          历史训练")
 
 
