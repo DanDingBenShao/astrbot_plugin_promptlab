@@ -1,0 +1,44 @@
+{
+  "max_rounds": {
+    "description": "对抗轮次上限（默认3，满轮必停）",
+    "type": "int",
+    "default": 3,
+    "hint": "每轮=改提示词+产回复+验收 2~3 次模型调用；轮次越多越贵，1-10 合理"
+  },
+  "pass_score": {
+    "description": "验收及格线（0-100）",
+    "type": "int",
+    "default": 70,
+    "hint": "综合分≥此值且硬伤清单为空才算通过"
+  },
+  "prompt_model": {
+    "description": "改提示词的优化师模型（空=主模型）",
+    "type": "string",
+    "default": "",
+    "hint": "填 provider id 可指定另一模型；留空用当前主模型"
+  },
+  "judge_model": {
+    "description": "验收官模型（空=主模型）",
+    "type": "string",
+    "default": "",
+    "hint": "建议填与被训 bot 不同的模型，避免自评偏袒；留空用主模型"
+  },
+  "act_model": {
+    "description": "被训者产回复用的模型（空=主模型）",
+    "type": "string",
+    "default": "",
+    "hint": "一般应等于被训 bot 的主模型，保证验收结果贴近真实"
+  },
+  "samples_limit": {
+    "description": "从官方会话历史取风格样本的条数上限",
+    "type": "int",
+    "default": 20,
+    "hint": "训练开始时从 AstrBot 会话库取最近的对话记录做风格参照；0=不取"
+  },
+  "samples_chars": {
+    "description": "风格样本总字数上限",
+    "type": "int",
+    "default": 1200,
+    "hint": "超出截断，控制 token 成本"
+  }
+}

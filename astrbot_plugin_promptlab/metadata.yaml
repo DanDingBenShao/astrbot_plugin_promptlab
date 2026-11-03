@@ -1,0 +1,31 @@
+name: astrbot_plugin_promptlab
+display_name: PromptLab 双AI对抗训练室
+short_desc: 让第二个 AI 验收你改的提示词——基线对照+三轴评分，默认三轮必停
+desc: |
+  PromptLab 双AI对抗训练室：你提需求，一个 AI 改提示词，另一个 AI 当验收官。
+
+  痛点：让 bot「更像人」，它口头答应，回复还是老样子；自己改提示词，
+  改没改到位全靠肉眼，又累又不客观。
+
+  机制：
+  - 基线对照：先用当前提示词产一份基线回复，之后每轮强制对比——
+    敷衍的「改了」过不了关（没有实质差异直接判不过）
+  - 需求清单：验收官先把人类需求拆成可检查项，逐项判定，不搞感觉流
+  - 三轴评分：符合度（像不像人要的）+ 变化度（与基线差异够不够）+
+    保真度（语言/格式/人设基本盘没崩），70 分及格线
+  - 收敛交付：通过或满轮停止时，交付验收报告 + 收敛后的提示词全文
+  - 默认三轮必停（可配 1-10），每轮 2 次模型调用，成本可控
+  - 全程离线：迭代的是候选提示词，不碰 bot 正在用的人设，零生产风险
+  - 素材：需求文本 + 可选真实群聊/私聊记录做风格参照（官方接口取数），
+    没装其他记忆插件也完全可用
+version: 0.1.0
+author: 本少 (DanDingBenShao)
+social_link: https://space.bilibili.com/411821291
+repo: https://github.com/DanDingBenShao/astrbot_plugin_promptlab
+astrbot_version: ">=4.29.0"
+support_platforms:
+  - aiocqhttp
+tags:
+  - 提示词
+  - 对抗训练
+  - 人设调优
