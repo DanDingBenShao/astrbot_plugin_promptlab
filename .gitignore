@@ -1,5 +1,5 @@
 __pycache__/
 *.pyc
+*.lnk
 *.json.tmp
-tests_e2e/__pycache__/
-data/
+astrbot_plugin_promptlab/data/
